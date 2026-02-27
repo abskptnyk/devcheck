@@ -1,4 +1,4 @@
-planning docs/
+.planning/
 dist/
 *.exe
 *.test

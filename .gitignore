@@ -4,4 +4,4 @@ dist/
 *.test
 .env
 .env.local
-devcheck
+/devcheck

@@ -1,6 +1,10 @@
 package check
 
-import "github.com/vidya381/devcheck/internal/detector"
+import (
+	"os"
+
+	"github.com/vidya381/devcheck/internal/detector"
+)
 
 func Build(stack detector.DetectedStack) []Check {
 	var cs []Check
@@ -32,10 +36,14 @@ func Build(stack detector.DetectedStack) []Check {
 		cs = append(cs, &DockerDaemonCheck{})
 	}
 	if stack.Postgres {
-		// add Postgres checks
+		cs = append(cs, &PostgresCheck{URL: os.Getenv("DATABASE_URL")})
 	}
 	if stack.Redis {
-		// add Redis checks
+		url := os.Getenv("REDIS_URL")
+		if url == "" {
+			url = os.Getenv("REDIS_URI")
+		}
+		cs = append(cs, &RedisCheck{URL: url})
 	}
 
 	if stack.EnvExample {

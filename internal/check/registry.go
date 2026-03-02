@@ -35,6 +35,9 @@ func Build(stack detector.DetectedStack) []Check {
 		cs = append(cs, &BinaryCheck{Binary: "docker"})
 		cs = append(cs, &DockerDaemonCheck{})
 	}
+	if stack.DockerCompose {
+		cs = append(cs, &ComposeCheck{})
+	}
 	if stack.Postgres {
 		cs = append(cs, &PostgresCheck{URL: os.Getenv("DATABASE_URL")})
 	}

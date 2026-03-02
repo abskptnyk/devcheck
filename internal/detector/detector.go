@@ -13,7 +13,8 @@ type DetectedStack struct {
 	Java     bool
 	Maven    bool
 	Gradle   bool
-	Docker   bool
+	Docker        bool
+	DockerCompose bool
 	Postgres bool
 	Redis    bool
 	MySQL    bool
@@ -31,9 +32,9 @@ func Detect(dir string) DetectedStack {
 	stack.Maven = fileExists(filepath.Join(dir, "pom.xml"))
 	stack.Gradle = fileExists(filepath.Join(dir, "build.gradle"))
 	stack.Java = stack.Maven || stack.Gradle
-	stack.Docker = fileExists(filepath.Join(dir, "Dockerfile")) ||
-		fileExists(filepath.Join(dir, "docker-compose.yml")) ||
+	stack.DockerCompose = fileExists(filepath.Join(dir, "docker-compose.yml")) ||
 		fileExists(filepath.Join(dir, "docker-compose.yaml"))
+	stack.Docker = fileExists(filepath.Join(dir, "Dockerfile")) || stack.DockerCompose
 
 	dbURL := os.Getenv("DATABASE_URL")
 	stack.Postgres = strings.Contains(dbURL, "postgres")

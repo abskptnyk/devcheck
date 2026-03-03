@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 )
 
+var lookPath = exec.LookPath
+
 type GitHooksCheck struct {
 	Dir   string
 	Stack string // "node" or "python"
@@ -70,7 +72,7 @@ func (c *GitHooksCheck) runPython() Result {
 	_, err := os.Stat(configPath)
 	configExists := err == nil
 
-	_, err = exec.LookPath("pre-commit")
+	_, err = lookPath("pre-commit")
 	preCommitInstalled := err == nil
 
 	if configExists && preCommitInstalled {

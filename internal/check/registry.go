@@ -12,16 +12,19 @@ func Build(stack detector.DetectedStack) []Check {
 	if stack.Go {
 		cs = append(cs, &BinaryCheck{Binary: "go"})
 		cs = append(cs, &GoVersionCheck{Dir: "."})
+		cs = append(cs, &DepsCheck{Dir: ".", Stack: "go"})
 	}
 	if stack.Node {
 		cs = append(cs, &BinaryCheck{Binary: "node"})
 		cs = append(cs, &BinaryCheck{Binary: "npm"})
 		cs = append(cs, &NodeVersionCheck{Dir: "."})
+		cs = append(cs, &DepsCheck{Dir: ".", Stack: "node"})
 		cs = append(cs, &GitHooksCheck{Dir: ".", Stack: "node"})
 	}
 	if stack.Python {
 		cs = append(cs, &BinaryCheck{Binary: "python3"})
 		cs = append(cs, &BinaryCheck{Binary: "pip"})
+		cs = append(cs, &DepsCheck{Dir: ".", Stack: "python"})
 		cs = append(cs, &GitHooksCheck{Dir: ".", Stack: "python"})
 	}
 	if stack.Java {

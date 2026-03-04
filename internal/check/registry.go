@@ -62,6 +62,11 @@ func Build(stack detector.DetectedStack) []Check {
 		cs = append(cs, &EnvCheck{Dir: "."})
 	}
 
+	// Check .gitignore for sensitive file patterns
+	if fileExists(".gitignore") {
+		cs = append(cs, &GitignoreCheck{Dir: "."})
+	}
+
 	return cs
 }
 

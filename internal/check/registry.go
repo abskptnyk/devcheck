@@ -46,6 +46,7 @@ func Build(stack detector.DetectedStack) []Check {
 	}
 	if stack.DockerCompose {
 		cs = append(cs, &ComposeCheck{})
+		cs = append(cs, &ComposeImageCheck{})
 	}
 	if stack.Postgres {
 		cs = append(cs, &PostgresCheck{URL: os.Getenv("DATABASE_URL")})

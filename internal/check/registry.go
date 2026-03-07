@@ -51,6 +51,16 @@ func Build(stack detector.DetectedStack) []Check {
 	if stack.Postgres {
 		cs = append(cs, &PostgresCheck{URL: os.Getenv("DATABASE_URL")})
 	}
+	if stack.MySQL {
+		cs = append(cs, &MySQLCheck{URL: os.Getenv("MYSQL_URL")})
+	}
+	if stack.MongoDB {
+		url := os.Getenv("MONGODB_URI")
+		if url == "" {
+			url = os.Getenv("MONGO_URL")
+		}
+		cs = append(cs, &MongoCheck{URL: url})
+	}
 	if stack.Redis {
 		url := os.Getenv("REDIS_URL")
 		if url == "" {

@@ -49,7 +49,9 @@ func Build(stack detector.DetectedStack) []Check {
 		cs = append(cs, &ComposeImageCheck{})
 	}
 	if stack.Postgres {
-		cs = append(cs, &PostgresCheck{URL: os.Getenv("DATABASE_URL")})
+		dbURL := os.Getenv("DATABASE_URL")
+		cs = append(cs, &PortCheck{Service: "PostgreSQL", Port: portFromURL(dbURL, "5432")})
+		cs = append(cs, &PostgresCheck{URL: dbURL})
 	}
 	if stack.MySQL {
 		cs = append(cs, &MySQLCheck{URL: os.Getenv("MYSQL_URL")})
@@ -62,11 +64,22 @@ func Build(stack detector.DetectedStack) []Check {
 		cs = append(cs, &MongoCheck{URL: url})
 	}
 	if stack.Redis {
-		url := os.Getenv("REDIS_URL")
-		if url == "" {
-			url = os.Getenv("REDIS_URI")
+		redisURL := os.Getenv("REDIS_URL")
+		if redisURL == "" {
+			redisURL = os.Getenv("REDIS_URI")
 		}
-		cs = append(cs, &RedisCheck{URL: url})
+		cs = append(cs, &PortCheck{Service: "Redis", Port: portFromURL(redisURL, "6379")})
+		cs = append(cs, &RedisCheck{URL: redisURL})
+	}
+	if stack.MySQL {
+		cs = append(cs, &PortCheck{Service: "MySQL", Port: portFromURL(os.Getenv("MYSQL_URL"), "3306")})
+	}
+	if stack.MongoDB {
+		mongoURL := os.Getenv("MONGODB_URI")
+		if mongoURL == "" {
+			mongoURL = os.Getenv("MONGO_URL")
+		}
+		cs = append(cs, &PortCheck{Service: "MongoDB", Port: portFromURL(mongoURL, "27017")})
 	}
 
 	if stack.EnvExample {

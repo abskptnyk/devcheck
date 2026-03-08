@@ -52,6 +52,17 @@ func (c *EnvCheck) Run(_ context.Context) Result {
 		}
 	}
 
+	for k, v := range actualKeys {
+		if v == "" {
+			return Result{
+				Name:    c.Name(),
+				Status:  StatusWarn,
+				Message: fmt.Sprintf("key %s is present but has no value", k),
+				Fix:     "fill in the value for the key in your .env file",
+			}
+		}
+	}
+
 	return Result{
 		Name:    c.Name(),
 		Status:  StatusPass,

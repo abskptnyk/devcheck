@@ -59,24 +59,25 @@ func (c *EnvCheck) Run(_ context.Context) Result {
 	}
 }
 
-func parseEnvKeys(path string) (map[string]struct{}, error) {
+func parseEnvKeys(path string) (map[string]string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	keys := make(map[string]struct{})
+	keys := make(map[string]string)
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		key, _, _ := strings.Cut(line, "=")
+		key, val, _ := strings.Cut(line, "=")
 		key = strings.TrimSpace(key)
+		val = strings.TrimSpace(val)
 		if key != "" {
-			keys[key] = struct{}{}
+			keys[key] = val
 		}
 	}
 	return keys, scanner.Err()

@@ -53,6 +53,16 @@ func Build(stack detector.DetectedStack) []Check {
 		cs = append(cs, &PortCheck{Service: "PostgreSQL", Port: portFromURL(dbURL, "5432")})
 		cs = append(cs, &PostgresCheck{URL: dbURL})
 	}
+	if stack.MySQL {
+		cs = append(cs, &MySQLCheck{URL: os.Getenv("MYSQL_URL")})
+	}
+	if stack.MongoDB {
+		url := os.Getenv("MONGODB_URI")
+		if url == "" {
+			url = os.Getenv("MONGO_URL")
+		}
+		cs = append(cs, &MongoCheck{URL: url})
+	}
 	if stack.Redis {
 		redisURL := os.Getenv("REDIS_URL")
 		if redisURL == "" {

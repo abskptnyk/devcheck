@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -43,6 +44,7 @@ func (c *EnvCheck) Run(_ context.Context) Result {
 		}
 	}
 
+	sort.Strings(missing)
 	if len(missing) > 0 {
 		return Result{
 			Name:    c.Name(),
@@ -59,6 +61,7 @@ func (c *EnvCheck) Run(_ context.Context) Result {
 		}
 	}
 
+	sort.Strings(empty)
 	if len(empty) > 0 {
 		return Result{
 			Name:    c.Name(),

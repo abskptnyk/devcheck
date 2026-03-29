@@ -8,8 +8,14 @@ import (
 	"strings"
 )
 
+type requiredPattern struct {
+	pattern     string
+	description string
+}
+
 type GitignoreCheck struct {
-	Dir string
+	Dir      string
+	Patterns []requiredPattern
 }
 
 func (c *GitignoreCheck) Name() string {
@@ -18,7 +24,7 @@ func (c *GitignoreCheck) Name() string {
 
 func (c *GitignoreCheck) Run(_ context.Context) Result {
 	gitignorePath := c.Dir + "/.gitignore"
-	
+
 	// Read .gitignore content
 	file, err := os.Open(gitignorePath)
 	if err != nil {
@@ -43,31 +49,23 @@ func (c *GitignoreCheck) Run(_ context.Context) Result {
 		patterns[line] = true
 	}
 
-	// Define required patterns
-	requiredPatterns := map[string]string{
-		".env":          "Environment files with secrets",
-		"*.log":         "Log files",
-		"__pycache__":   "Python cache",
-		"node_modules":  "Node.js dependencies",
-	}
-
 	// Check which patterns are missing
 	var missing []string
-	for pattern, description := range requiredPatterns {
+	for _, rp := range c.Patterns {
 		// Check if pattern or a variant exists
 		found := false
 		for existingPattern := range patterns {
 			// Match exact pattern or with trailing slash (for directories)
-			if existingPattern == pattern || 
-			   existingPattern == pattern+"/" ||
-			   existingPattern == "**/"+pattern ||
-			   existingPattern == "**/"+pattern+"/" {
+			if existingPattern == rp.pattern ||
+				existingPattern == rp.pattern+"/" ||
+				existingPattern == "**/"+rp.pattern ||
+				existingPattern == "**/"+rp.pattern+"/" {
 				found = true
 				break
 			}
 		}
 		if !found {
-			missing = append(missing, fmt.Sprintf("%s (%s)", pattern, description))
+			missing = append(missing, fmt.Sprintf("%s (%s)", rp.pattern, rp.description))
 		}
 	}
 

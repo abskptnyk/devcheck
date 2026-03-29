@@ -86,6 +86,28 @@ func Build(stack detector.DetectedStack) []Check {
 		cs = append(cs, &EnvCheck{Dir: "."})
 	}
 
+
+	// Check .gitignore for sensitive file patterns
+	if fileExists(".gitignore") {
+		gitignorePatterns := []requiredPattern{
+			{pattern: ".env", description: "Environment files with secrets"},
+			{pattern: "*.log", description: "Log files"},
+		}
+		if stack.Node {
+			gitignorePatterns = append(gitignorePatterns, requiredPattern{
+				pattern:     "node_modules",
+				description: "Node.js dependencies",
+			})
+		}
+		if stack.Python {
+			gitignorePatterns = append(gitignorePatterns, requiredPattern{
+				pattern:     "__pycache__",
+				description: "Python cache",
+			})
+		}
+		cs = append(cs, &GitignoreCheck{Dir: ".", Patterns: gitignorePatterns})
+	}
+
 	return cs
 }
 

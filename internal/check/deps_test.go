@@ -32,6 +32,42 @@ func TestDepsCheck_Node_PassAndFail(t *testing.T) {
 	}
 }
 
+func TestDepsCheck_Node_FixMessage_DefaultsToNpm(t *testing.T) {
+	dir := t.TempDir()
+	check := &DepsCheck{Dir: dir, Stack: "node"} // no PackageManager set
+	result := check.Run(context.Background())
+	if result.Status != StatusFail {
+		t.Fatalf("expected fail, got %v", result.Status)
+	}
+	if !strings.Contains(result.Fix, "npm install") {
+		t.Errorf("expected fix to mention 'npm install', got: %s", result.Fix)
+	}
+}
+
+func TestDepsCheck_Node_FixMessage_Pnpm(t *testing.T) {
+	dir := t.TempDir()
+	check := &DepsCheck{Dir: dir, Stack: "node", PackageManager: "pnpm"}
+	result := check.Run(context.Background())
+	if result.Status != StatusFail {
+		t.Fatalf("expected fail, got %v", result.Status)
+	}
+	if !strings.Contains(result.Fix, "pnpm install") {
+		t.Errorf("expected fix to mention 'pnpm install', got: %s", result.Fix)
+	}
+}
+
+func TestDepsCheck_Node_FixMessage_Yarn(t *testing.T) {
+	dir := t.TempDir()
+	check := &DepsCheck{Dir: dir, Stack: "node", PackageManager: "yarn"}
+	result := check.Run(context.Background())
+	if result.Status != StatusFail {
+		t.Fatalf("expected fail, got %v", result.Status)
+	}
+	if !strings.Contains(result.Fix, "yarn install") {
+		t.Errorf("expected fix to mention 'yarn install', got: %s", result.Fix)
+	}
+}
+
 func TestDepsCheck_Python_PassAndFail(t *testing.T) {
 	dir := t.TempDir()
 	check := &DepsCheck{Dir: dir, Stack: "python"}

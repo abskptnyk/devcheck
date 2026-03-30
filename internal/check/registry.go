@@ -19,10 +19,14 @@ func Build(stack detector.DetectedStack) []Check {
 		cs = append(cs, &DepsCheck{Dir: ".", Stack: "go"})
 	}
 	if stack.Node {
+		pm := stack.PackageManager
+		if pm == "" {
+			pm = "npm"
+		}
 		cs = append(cs, &BinaryCheck{Binary: "node"})
-		cs = append(cs, &BinaryCheck{Binary: "npm"})
+		cs = append(cs, &BinaryCheck{Binary: pm})
 		cs = append(cs, &NodeVersionCheck{Dir: "."})
-		cs = append(cs, &DepsCheck{Dir: ".", Stack: "node"})
+		cs = append(cs, &DepsCheck{Dir: ".", Stack: "node", PackageManager: pm})
 		cs = append(cs, &GitHooksCheck{Dir: ".", Stack: "node"})
 	}
 	if stack.Python {

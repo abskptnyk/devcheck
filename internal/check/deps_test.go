@@ -54,8 +54,8 @@ func TestDepsCheck_Node_FixMessage_Pnpm(t *testing.T) {
 	if !strings.Contains(result.Fix, "pnpm install") {
 		t.Errorf("expected fix to mention 'pnpm install', got: %s", result.Fix)
 	}
-	if strings.Contains(result.Fix, "npm") {
-		t.Errorf("fix should not mention npm for a pnpm project, got: %s", result.Fix)
+	if strings.Contains(result.Fix, "npm install") {
+		t.Errorf("fix should not mention 'npm install' for a pnpm project, got: %s", result.Fix)
 	}
 }
 

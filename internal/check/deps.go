@@ -28,8 +28,9 @@ var pipCheckRunner = func(pipBin string) error {
 }
 
 type DepsCheck struct {
-	Dir       string
-	Stack     string // "node", "python", or "go"
+	Dir            string
+	Stack          string // "node", "python", or "go"
+	PackageManager string // "npm", "pnpm", or "yarn" (Node only; defaults to "npm")
 	goCheck   func(dir string) error
 	pipFreeze func(pipBin string) ([]byte, error)
 	pipCheck  func(pipBin string) error
@@ -74,11 +75,15 @@ func (c *DepsCheck) runNode() Result {
 			Message: "node_modules directory exists",
 		}
 	}
+	pm := c.PackageManager
+	if pm == "" {
+		pm = "npm"
+	}
 	return Result{
 		Name:    c.Name(),
 		Status:  StatusFail,
 		Message: "node_modules directory not found",
-		Fix:     "run `npm install` or `pnpm install` to install Node dependencies",
+		Fix:     fmt.Sprintf("run `%s install` to install Node dependencies", pm),
 	}
 }
 

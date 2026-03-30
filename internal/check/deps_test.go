@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"strings"
 )
 
 func TestDepsCheck_Node_PassAndFail(t *testing.T) {
@@ -97,3 +98,115 @@ func TestDepsCheck_Go_PassAndFail(t *testing.T) {
 	}
 }
 
+func TestDepsCheck_Python_VenvNoRequirements_StillPass(t *testing.T) {
+	// Existing behaviour must be preserved: venv present, no requirements.txt → pass.
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".venv"), 0o755); err != nil {
+		t.Fatalf("mkdir .venv: %v", err)
+	}
+	c := &DepsCheck{Dir: dir, Stack: "python"}
+	r := c.Run(context.Background())
+	if r.Status != StatusPass {
+		t.Errorf("expected Pass when no requirements.txt, got %v: %s", r.Status, r.Message)
+	}
+}
+
+func TestDepsCheck_Python_AllPackagesPresent(t *testing.T) {
+	dir, pipBin := setupPythonDir(t, "requests==2.31.0\nflask>=2.0\n# comment\n")
+	c := &DepsCheck{
+		Dir:   dir,
+		Stack: "python",
+		pipCheck: func(_ string) error { return nil },
+		pipFreeze: func(_ string) ([]byte, error) {
+			return []byte("requests==2.31.0\nFlask==2.3.0\n"), nil
+		},
+	}
+	_ = pipBin
+	r := c.Run(context.Background())
+	if r.Status != StatusPass {
+		t.Errorf("expected Pass when all packages present, got %v: %s", r.Status, r.Message)
+	}
+}
+
+func TestDepsCheck_Python_MissingPackage(t *testing.T) {
+	dir, _ := setupPythonDir(t, "requests==2.31.0\ncelery>=5.0\n")
+	c := &DepsCheck{
+		Dir:   dir,
+		Stack: "python",
+		pipCheck: func(_ string) error { return nil },
+		pipFreeze: func(_ string) ([]byte, error) {
+			return []byte("requests==2.31.0\n"), nil // celery absent
+		},
+	}
+	r := c.Run(context.Background())
+	if r.Status != StatusFail {
+		t.Fatalf("expected Fail for missing package, got %v: %s", r.Status, r.Message)
+	}
+	if !strings.Contains(r.Message, "celery") {
+		t.Errorf("expected 'celery' in message, got: %s", r.Message)
+	}
+}
+
+func TestDepsCheck_Python_PipCheckConflict(t *testing.T) {
+	dir, _ := setupPythonDir(t, "requests\n")
+	c := &DepsCheck{
+		Dir:      dir,
+		Stack:    "python",
+		pipCheck: func(_ string) error { return errors.New("conflict") },
+	}
+	r := c.Run(context.Background())
+	if r.Status != StatusFail {
+		t.Errorf("expected Fail when pip check reports conflict, got %v: %s", r.Status, r.Message)
+	}
+}
+
+func TestDepsCheck_Python_CaseInsensitiveMatch(t *testing.T) {
+	// requirements.txt uses "Requests"; freeze returns "requests" — should still pass.
+	dir, _ := setupPythonDir(t, "Requests>=2.0\n")
+	c := &DepsCheck{
+		Dir:   dir,
+		Stack: "python",
+		pipCheck: func(_ string) error { return nil },
+		pipFreeze: func(_ string) ([]byte, error) {
+			return []byte("requests==2.31.0\n"), nil
+		},
+	}
+	r := c.Run(context.Background())
+	if r.Status != StatusPass {
+		t.Errorf("expected Pass for case-insensitive match, got %v: %s", r.Status, r.Message)
+	}
+}
+
+func TestDepsCheck_Python_EditableInstall(t *testing.T) {
+	dir, _ := setupPythonDir(t, "mylib\n")
+	c := &DepsCheck{
+		Dir:   dir,
+		Stack: "python",
+		pipCheck: func(_ string) error { return nil },
+		pipFreeze: func(_ string) ([]byte, error) {
+			return []byte("-e git+https://github.com/org/mylib.git@main#egg=mylib\n"), nil
+		},
+	}
+	r := c.Run(context.Background())
+	if r.Status != StatusPass {
+		t.Errorf("expected Pass for editable install, got %v: %s", r.Status, r.Message)
+	}
+}
+
+// setupPythonDir creates a temp dir with a .venv/bin/pip stub and a
+// requirements.txt containing the given content, then returns both.
+func setupPythonDir(t *testing.T, requirements string) (dir string, pipBin string) {
+	t.Helper()
+	dir = t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".venv", "bin"), 0o755); err != nil {
+		t.Fatalf("mkdir .venv/bin: %v", err)
+	}
+	pipBin = filepath.Join(dir, ".venv", "bin", "pip")
+	if err := os.WriteFile(pipBin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write pip stub: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "requirements.txt"), []byte(requirements), 0o644); err != nil {
+		t.Fatalf("write requirements.txt: %v", err)
+	}
+	return dir, pipBin
+}

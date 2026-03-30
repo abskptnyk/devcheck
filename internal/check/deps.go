@@ -28,11 +28,11 @@ var pipCheckRunner = func(pipBin string) error {
 }
 
 type DepsCheck struct {
-	Dir          string
-	Stack        string // "node", "python", or "go"
-	goCheck      func(dir string) error
-	pipFreeze    func(pipBin string) ([]byte, error)
-	pipCheck     func(pipBin string) error
+	Dir       string
+	Stack     string // "node", "python", or "go"
+	goCheck   func(dir string) error
+	pipFreeze func(pipBin string) ([]byte, error)
+	pipCheck  func(pipBin string) error
 }
 
 func (c *DepsCheck) Name() string {
@@ -93,7 +93,7 @@ func (c *DepsCheck) runPython() Result {
 		}
 	}
 
-	// No requirements.txt — venv existing is enough.
+	// No requirements.txt — venv existing is sufficient.
 	reqFile := filepath.Join(c.Dir, "requirements.txt")
 	if _, err := os.Stat(reqFile); os.IsNotExist(err) {
 		return Result{
@@ -103,13 +103,9 @@ func (c *DepsCheck) runPython() Result {
 		}
 	}
 
-	pipBin := filepath.Join(venvDir, "bin", "pip")
-	if _, err := os.Stat(pipBin); os.IsNotExist(err) {
-		// Windows layout
-		pipBin = filepath.Join(venvDir, "Scripts", "pip.exe")
-	}
+	pipBin := c.findPipBin(venvDir)
 
-	// Run pip check for dependency conflicts.
+	// Run pip check for dependency conflicts first.
 	checkFn := c.pipCheck
 	if checkFn == nil {
 		checkFn = pipCheckRunner
@@ -119,11 +115,11 @@ func (c *DepsCheck) runPython() Result {
 			Name:    c.Name(),
 			Status:  StatusFail,
 			Message: fmt.Sprintf("pip check reported dependency conflicts: %v", err),
-			Fix:     "run `pip install -r requirements.txt` inside your virtual environment to fix conflicting or missing packages",
+			Fix:     "run `pip install -r requirements.txt` inside your virtual environment to resolve conflicting or missing packages",
 		}
 	}
 
-	// Compare pip freeze against requirements.txt to find missing packages.
+	// Compare pip freeze against requirements.txt to catch missing packages.
 	freezeFn := c.pipFreeze
 	if freezeFn == nil {
 		freezeFn = pipFreezeRunner
@@ -164,6 +160,15 @@ func (c *DepsCheck) findVenv() string {
 	return ""
 }
 
+// findPipBin returns the pip binary path inside venvDir (Unix or Windows layout).
+func (c *DepsCheck) findPipBin(venvDir string) string {
+	unix := filepath.Join(venvDir, "bin", "pip")
+	if _, err := os.Stat(unix); err == nil {
+		return unix
+	}
+	return filepath.Join(venvDir, "Scripts", "pip.exe")
+}
+
 // findMissingRequirements returns package names listed in requirements.txt
 // that are absent from `pip freeze` output.
 func findMissingRequirements(pipBin, reqFile string, freezeFn func(string) ([]byte, error)) ([]string, error) {
@@ -171,7 +176,6 @@ func findMissingRequirements(pipBin, reqFile string, freezeFn func(string) ([]by
 	if err != nil {
 		return nil, fmt.Errorf("reading requirements.txt: %w", err)
 	}
-
 	out, err := freezeFn(pipBin)
 	if err != nil {
 		return nil, fmt.Errorf("running pip freeze: %w", err)
@@ -188,7 +192,7 @@ func findMissingRequirements(pipBin, reqFile string, freezeFn func(string) ([]by
 }
 
 // parseRequirements reads requirements.txt and returns a set of lowercase
-// package names (strips version specifiers and ignores comments/blanks).
+// package names, stripping version specifiers, extras, markers, and comments.
 func parseRequirements(path string) (map[string]struct{}, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -200,6 +204,7 @@ func parseRequirements(path string) (map[string]struct{}, error) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+		// Skip blanks, comments, and pip options (e.g. -r, --index-url).
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
 			continue
 		}
@@ -207,11 +212,11 @@ func parseRequirements(path string) (map[string]struct{}, error) {
 		if idx := strings.IndexByte(line, '#'); idx >= 0 {
 			line = strings.TrimSpace(line[:idx])
 		}
-		// Extract bare package name before any version specifier.
+		// Extract bare package name before any version specifier, extra, or marker.
 		name := strings.FieldsFunc(line, func(r rune) bool {
-			return r == '=' || r == '!' || r == '<' || r == '>' || r == '[' || r == ';'
+			return r == '=' || r == '!' || r == '<' || r == '>' || r == '[' || r == ';' || r == ' '
 		})[0]
-		pkgs[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
+		pkgs[strings.ToLower(name)] = struct{}{}
 	}
 	return pkgs, scanner.Err()
 }
@@ -225,11 +230,10 @@ func parseFreeze(output []byte) map[string]struct{} {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		// Handle editable installs: "-e git+...#egg=pkgname"
+		// Editable installs: "-e git+...#egg=pkgname"
 		if strings.HasPrefix(line, "-e ") {
 			if idx := strings.Index(line, "#egg="); idx >= 0 {
-				name := strings.TrimSpace(line[idx+5:])
-				installed[strings.ToLower(name)] = struct{}{}
+				installed[strings.ToLower(strings.TrimSpace(line[idx+5:]))] = struct{}{}
 			}
 			continue
 		}

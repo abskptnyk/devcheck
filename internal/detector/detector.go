@@ -9,6 +9,9 @@ import (
 type DetectedStack struct {
 	Go       bool
 	Node     bool
+	// PackageManager is the Node package manager inferred from the lockfile.
+	// Possible values: "npm", "pnpm", "yarn". Empty string when Node is false.
+	PackageManager string
 	Python   bool
 	Java     bool
 	Maven    bool
@@ -27,6 +30,16 @@ func Detect(dir string) DetectedStack {
 
 	stack.Go = fileExists(filepath.Join(dir, "go.mod"))
 	stack.Node = fileExists(filepath.Join(dir, "package.json"))
+	if stack.Node {
+		switch {
+		case fileExists(filepath.Join(dir, "pnpm-lock.yaml")):
+			stack.PackageManager = "pnpm"
+		case fileExists(filepath.Join(dir, "yarn.lock")):
+			stack.PackageManager = "yarn"
+		default:
+			stack.PackageManager = "npm"
+		}
+	}
 	stack.Python = fileExists(filepath.Join(dir, "requirements.txt")) ||
 		fileExists(filepath.Join(dir, "pyproject.toml"))
 	stack.Maven = fileExists(filepath.Join(dir, "pom.xml"))

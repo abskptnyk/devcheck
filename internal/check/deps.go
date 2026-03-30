@@ -1,10 +1,13 @@
 package check
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // goModDownload is a variable so tests can stub it.
@@ -14,10 +17,22 @@ var goModDownload = func(dir string) error {
 	return cmd.Run()
 }
 
+// pipFreezeRunner is a variable so tests can stub it.
+var pipFreezeRunner = func(pipBin string) ([]byte, error) {
+	return exec.Command(pipBin, "freeze").Output()
+}
+
+// pipCheckRunner is a variable so tests can stub it.
+var pipCheckRunner = func(pipBin string) error {
+	return exec.Command(pipBin, "check").Run()
+}
+
 type DepsCheck struct {
-	Dir     string
-	Stack   string // "node", "python", or "go"
-	goCheck func(dir string) error
+	Dir          string
+	Stack        string // "node", "python", or "go"
+	goCheck      func(dir string) error
+	pipFreeze    func(pipBin string) ([]byte, error)
+	pipCheck     func(pipBin string) error
 }
 
 func (c *DepsCheck) Name() string {
@@ -59,7 +74,6 @@ func (c *DepsCheck) runNode() Result {
 			Message: "node_modules directory exists",
 		}
 	}
-
 	return Result{
 		Name:    c.Name(),
 		Status:  StatusFail,
@@ -69,10 +83,19 @@ func (c *DepsCheck) runNode() Result {
 }
 
 func (c *DepsCheck) runPython() Result {
-	venv := filepath.Join(c.Dir, "venv")
-	dotVenv := filepath.Join(c.Dir, ".venv")
+	venvDir := c.findVenv()
+	if venvDir == "" {
+		return Result{
+			Name:    c.Name(),
+			Status:  StatusFail,
+			Message: "Python virtual environment directory not found",
+			Fix:     "create a virtual environment (e.g. `python -m venv .venv`) and install dependencies with `pip install -r requirements.txt` or equivalent",
+		}
+	}
 
-	if dirExists(venv) || dirExists(dotVenv) {
+	// No requirements.txt — venv existing is enough.
+	reqFile := filepath.Join(c.Dir, "requirements.txt")
+	if _, err := os.Stat(reqFile); os.IsNotExist(err) {
 		return Result{
 			Name:    c.Name(),
 			Status:  StatusPass,
@@ -80,12 +103,140 @@ func (c *DepsCheck) runPython() Result {
 		}
 	}
 
+	pipBin := filepath.Join(venvDir, "bin", "pip")
+	if _, err := os.Stat(pipBin); os.IsNotExist(err) {
+		// Windows layout
+		pipBin = filepath.Join(venvDir, "Scripts", "pip.exe")
+	}
+
+	// Run pip check for dependency conflicts.
+	checkFn := c.pipCheck
+	if checkFn == nil {
+		checkFn = pipCheckRunner
+	}
+	if err := checkFn(pipBin); err != nil {
+		return Result{
+			Name:    c.Name(),
+			Status:  StatusFail,
+			Message: fmt.Sprintf("pip check reported dependency conflicts: %v", err),
+			Fix:     "run `pip install -r requirements.txt` inside your virtual environment to fix conflicting or missing packages",
+		}
+	}
+
+	// Compare pip freeze against requirements.txt to find missing packages.
+	freezeFn := c.pipFreeze
+	if freezeFn == nil {
+		freezeFn = pipFreezeRunner
+	}
+	missing, err := findMissingRequirements(pipBin, reqFile, freezeFn)
+	if err != nil {
+		return Result{
+			Name:    c.Name(),
+			Status:  StatusFail,
+			Message: fmt.Sprintf("could not compare installed packages to requirements.txt: %v", err),
+			Fix:     "ensure pip is available in your virtual environment and requirements.txt is readable",
+		}
+	}
+	if len(missing) > 0 {
+		return Result{
+			Name:    c.Name(),
+			Status:  StatusFail,
+			Message: fmt.Sprintf("packages listed in requirements.txt but not installed: %s", strings.Join(missing, ", ")),
+			Fix:     "run `pip install -r requirements.txt` inside your virtual environment",
+		}
+	}
+
 	return Result{
 		Name:    c.Name(),
-		Status:  StatusFail,
-		Message: "Python virtual environment directory not found",
-		Fix:     "create a virtual environment (e.g. `python -m venv .venv`) and install dependencies with `pip install -r requirements.txt` or equivalent",
+		Status:  StatusPass,
+		Message: "Python virtual environment exists and packages match requirements.txt",
 	}
+}
+
+// findVenv returns the path of the first venv directory found, or "".
+func (c *DepsCheck) findVenv() string {
+	for _, name := range []string{"venv", ".venv"} {
+		p := filepath.Join(c.Dir, name)
+		if dirExists(p) {
+			return p
+		}
+	}
+	return ""
+}
+
+// findMissingRequirements returns package names listed in requirements.txt
+// that are absent from `pip freeze` output.
+func findMissingRequirements(pipBin, reqFile string, freezeFn func(string) ([]byte, error)) ([]string, error) {
+	required, err := parseRequirements(reqFile)
+	if err != nil {
+		return nil, fmt.Errorf("reading requirements.txt: %w", err)
+	}
+
+	out, err := freezeFn(pipBin)
+	if err != nil {
+		return nil, fmt.Errorf("running pip freeze: %w", err)
+	}
+	installed := parseFreeze(out)
+
+	var missing []string
+	for pkg := range required {
+		if _, ok := installed[pkg]; !ok {
+			missing = append(missing, pkg)
+		}
+	}
+	return missing, nil
+}
+
+// parseRequirements reads requirements.txt and returns a set of lowercase
+// package names (strips version specifiers and ignores comments/blanks).
+func parseRequirements(path string) (map[string]struct{}, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	pkgs := make(map[string]struct{})
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
+			continue
+		}
+		// Strip inline comments.
+		if idx := strings.IndexByte(line, '#'); idx >= 0 {
+			line = strings.TrimSpace(line[:idx])
+		}
+		// Extract bare package name before any version specifier.
+		name := strings.FieldsFunc(line, func(r rune) bool {
+			return r == '=' || r == '!' || r == '<' || r == '>' || r == '[' || r == ';'
+		})[0]
+		pkgs[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
+	}
+	return pkgs, scanner.Err()
+}
+
+// parseFreeze parses `pip freeze` output into a set of lowercase package names.
+func parseFreeze(output []byte) map[string]struct{} {
+	installed := make(map[string]struct{})
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Handle editable installs: "-e git+...#egg=pkgname"
+		if strings.HasPrefix(line, "-e ") {
+			if idx := strings.Index(line, "#egg="); idx >= 0 {
+				name := strings.TrimSpace(line[idx+5:])
+				installed[strings.ToLower(name)] = struct{}{}
+			}
+			continue
+		}
+		parts := strings.SplitN(line, "==", 2)
+		installed[strings.ToLower(strings.TrimSpace(parts[0]))] = struct{}{}
+	}
+	return installed
 }
 
 func (c *DepsCheck) runGo() Result {
@@ -97,12 +248,10 @@ func (c *DepsCheck) runGo() Result {
 			Message: "vendor directory exists; Go dependencies are vendored",
 		}
 	}
-
 	check := c.goCheck
 	if check == nil {
 		check = goModDownload
 	}
-
 	if err := check(c.Dir); err != nil {
 		return Result{
 			Name:    c.Name(),
@@ -111,11 +260,9 @@ func (c *DepsCheck) runGo() Result {
 			Fix:     "run `go mod download` to download Go module dependencies",
 		}
 	}
-
 	return Result{
 		Name:    c.Name(),
 		Status:  StatusPass,
 		Message: "Go module cache is populated",
 	}
 }
-

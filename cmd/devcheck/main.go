@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync"
 
 	"github.com/spf13/cobra"
 	"github.com/vidya381/devcheck/internal/check"
+	"github.com/vidya381/devcheck/internal/config"
 	"github.com/vidya381/devcheck/internal/detector"
 	"github.com/vidya381/devcheck/internal/reporter"
 )
@@ -41,8 +43,30 @@ func main() {
 func run(cmd *cobra.Command, args []string) error {
 	dir, _ := os.Getwd()
 
+	cfg, err := config.Load(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+	}
+
 	stack := detector.Detect(dir)
 	checks := check.Build(stack)
+
+	// Append extra binary checks from devcheck.yml require:
+	for _, binary := range cfg.Require {
+		checks = append(checks, &check.BinaryCheck{Binary: binary})
+	}
+
+	// Filter out checks the user asked to skip:
+	if len(cfg.Skip) > 0 {
+		skipSet := cfg.SkipSet()
+		filtered := checks[:0]
+		for _, c := range checks {
+			if _, skip := skipSet[c.Name()]; !skip {
+				filtered = append(filtered, c)
+			}
+		}
+		checks = filtered
+	}
 
 	results := make([]check.Result, len(checks))
 	var wg sync.WaitGroup

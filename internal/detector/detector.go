@@ -46,7 +46,9 @@ func Detect(dir string) DetectedStack {
 	stack.Gradle = fileExists(filepath.Join(dir, "build.gradle"))
 	stack.Java = stack.Maven || stack.Gradle
 	stack.DockerCompose = fileExists(filepath.Join(dir, "docker-compose.yml")) ||
-		fileExists(filepath.Join(dir, "docker-compose.yaml"))
+		fileExists(filepath.Join(dir, "docker-compose.yaml")) ||
+		fileExists(filepath.Join(dir, "compose.yml")) ||
+		fileExists(filepath.Join(dir, "compose.yaml"))
 	stack.Docker = fileExists(filepath.Join(dir, "Dockerfile")) || stack.DockerCompose
 
 	dbURL := os.Getenv("DATABASE_URL")

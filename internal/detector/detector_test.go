@@ -69,3 +69,56 @@ func touch(t *testing.T, path string) {
 		t.Fatalf("touch %s: %v", path, err)
 	}
 }
+
+func TestDetect_DockerCompose_legacy_yml(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, filepath.Join(dir, "docker-compose.yml"))
+	stack := Detect(dir)
+	if !stack.DockerCompose {
+		t.Error("expected DockerCompose=true for docker-compose.yml")
+	}
+	if !stack.Docker {
+		t.Error("expected Docker=true when DockerCompose is true")
+	}
+}
+
+func TestDetect_DockerCompose_legacy_yaml(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, filepath.Join(dir, "docker-compose.yaml"))
+	stack := Detect(dir)
+	if !stack.DockerCompose {
+		t.Error("expected DockerCompose=true for docker-compose.yaml")
+	}
+}
+
+func TestDetect_DockerCompose_compose_yml(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, filepath.Join(dir, "compose.yml"))
+	stack := Detect(dir)
+	if !stack.DockerCompose {
+		t.Error("expected DockerCompose=true for compose.yml")
+	}
+	if !stack.Docker {
+		t.Error("expected Docker=true when DockerCompose is true")
+	}
+}
+
+func TestDetect_DockerCompose_compose_yaml(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, filepath.Join(dir, "compose.yaml"))
+	stack := Detect(dir)
+	if !stack.DockerCompose {
+		t.Error("expected DockerCompose=true for compose.yaml")
+	}
+	if !stack.Docker {
+		t.Error("expected Docker=true when DockerCompose is true")
+	}
+}
+
+func TestDetect_DockerCompose_false_when_absent(t *testing.T) {
+	dir := t.TempDir()
+	stack := Detect(dir)
+	if stack.DockerCompose {
+		t.Error("expected DockerCompose=false when no compose file present")
+	}
+}

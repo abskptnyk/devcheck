@@ -87,17 +87,49 @@ func parseEnvKeys(path string) (map[string]string, error) {
 
 	keys := make(map[string]string)
 	scanner := bufio.NewScanner(f)
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
+
+		if line == "" || line[0] == '#' {
 			continue
 		}
-		key, val, _ := strings.Cut(line, "=")
+
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+
 		key = strings.TrimSpace(key)
 		val = strings.TrimSpace(val)
-		if key != "" {
-			keys[key] = val
+
+		if key == "" {
+			continue
 		}
+
+		if len(val) > 0 && (val[0] == '"' || val[0] == '\'') {
+			q := val[0]
+			val = val[1:]
+			if !strings.ContainsRune(val, rune(q)) {
+				for scanner.Scan() {
+					chunk := scanner.Text()
+					if pre, _, found := strings.Cut(chunk, string(q)); found {
+						val += "\n" + pre
+						break
+					}
+					val += "\n" + chunk
+				}
+			} else {
+				val, _, _ = strings.Cut(val, string(q))
+			}
+		}
+
+		for strings.HasSuffix(val, `\`) && scanner.Scan() {
+			val = val[:len(val)-1] + strings.TrimSpace(scanner.Text())
+		}
+
+		keys[key] = val
 	}
+
 	return keys, scanner.Err()
 }
